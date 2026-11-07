@@ -27,8 +27,25 @@ class DenunciasApplicationService:
         longitud: float,
         telefono: Optional[str] = None,
         imagen_url: Optional[str] = None,
-        score_ia_manual: Optional[float] = None
+        score_ia_manual: Optional[float] = None,
+        idempotency_key: Optional[str] = None
     ) -> Dict[str, Any]:
+        # 0. Verificacion de Idempotencia (previene duplicados si la red celular reintenta)
+        if idempotency_key:
+            existente = await self.storage.obtener_por_idempotency_key(idempotency_key)
+            if existente:
+                return {
+                    "ticket_id": existente.ticket_id,
+                    "estado": existente.estado,
+                    "confianza_verificacion_ia": existente.score_fuego_ia,
+                    "categoria_predicha": existente.categoria_nlp,
+                    "es_prioridad_alta": existente.es_prioridad_alta(),
+                    "instrucciones_seguridad": existente.instrucciones_seguridad,
+                    "imagen_url": existente.imagen_url,
+                    "reintento_idempotente": True,
+                    "mensaje": "Reporte ya registrado previamente. No se duplico el envio (Idempotencia activa)."
+                }
+
         ticket_id = f"RAD-{uuid.uuid4().hex[:6].upper()}"
 
         denuncia = DenunciaCiudadana(
@@ -37,7 +54,8 @@ class DenunciasApplicationService:
             latitud=latitud,
             longitud=longitud,
             telefono=telefono,
-            imagen_url=imagen_url
+            imagen_url=imagen_url,
+            idempotency_key=idempotency_key
         )
 
         if score_ia_manual is not None:
@@ -61,6 +79,7 @@ class DenunciasApplicationService:
             "es_prioridad_alta": denuncia.es_prioridad_alta(),
             "instrucciones_seguridad": denuncia.instrucciones_seguridad,
             "imagen_url": denuncia.imagen_url,
+            "reintento_idempotente": False,
             "mensaje": "Reporte registrado y encolado para atencion inmediata."
         }
 
@@ -72,16 +91,36 @@ class DenunciasApplicationService:
         descripcion: str,
         latitud: float,
         longitud: float,
-        telefono: Optional[str] = None
+        telefono: Optional[str] = None,
+        idempotency_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Flujo completo de recepcion con evidencia directa:
+        0. Verifica idempotencia por si el usuario reintento tras caida de conexion.
         1. Almacena la foto en AWS S3 (o fallback local).
         2. Ejecuta inferencia Deep Learning con YOLOv8 en MS-05 sobre los bytes reales.
         3. Clasifica el texto con NLP supervisado.
         4. Persiste en MongoDB.
-        5. Notifica en vivo a MS-01 Comandos si la prioridad es ALTA.
+        5. Notifica en vivo a MS-01 Comandos si la prioridad es ALTA y al ciudadano por WhatsApp.
         """
+        # 0. Verificacion de Idempotencia
+        if idempotency_key:
+            existente = await self.storage.obtener_por_idempotency_key(idempotency_key)
+            if existente:
+                return {
+                    "ticket_id": existente.ticket_id,
+                    "estado": existente.estado,
+                    "confianza_verificacion_ia": existente.score_fuego_ia,
+                    "categoria_predicha": existente.categoria_nlp,
+                    "es_prioridad_alta": existente.es_prioridad_alta(),
+                    "imagen_url": existente.imagen_url,
+                    "instrucciones_seguridad": existente.instrucciones_seguridad,
+                    "detecciones_vision": [],
+                    "motor_vision": "YOLOv8 Deep Learning (Cache)",
+                    "reintento_idempotente": True,
+                    "mensaje": "Reporte ya registrado previamente. No se duplico el envio (Idempotencia activa)."
+                }
+
         # 1. Almacenar evidencia
         imagen_url = None
         if self.evidence_storage:
@@ -111,11 +150,12 @@ class DenunciasApplicationService:
             latitud=latitud,
             longitud=longitud,
             telefono=telefono,
-            imagen_url=imagen_url
+            imagen_url=imagen_url,
+            idempotency_key=idempotency_key
         )
         denuncia.asignar_evaluacion_ia(score_fuego=score_fuego, categoria=categoria_nlp)
 
-        # 5. Persistencia y notificacion a Sala de Crisis
+        # 5. Persistencia y notificacion a Sala de Crisis y WhatsApp
         await self.storage.guardar_denuncia(denuncia)
         await self.notifier.notificar_nueva_alerta(denuncia)
 
@@ -129,6 +169,7 @@ class DenunciasApplicationService:
             "instrucciones_seguridad": denuncia.instrucciones_seguridad,
             "detecciones_vision": res_vision.get("detalles", []),
             "motor_vision": res_vision.get("motor", "YOLOv8 Deep Learning"),
+            "reintento_idempotente": False,
             "mensaje": "Evidencia visual analizada con Deep Learning y reporte encolado exitosamente."
         }
 

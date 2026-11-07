@@ -7,7 +7,6 @@ from app.api.dependencies import get_denuncias_service
 
 router = APIRouter(prefix="/api/v1", tags=["Portal Ciudadano y Denuncias"])
 
-# Tipos MIME permitidos para evidencia fotografica
 FORMATOS_PERMITIDOS = ["image/jpeg", "image/png", "image/webp", "image/bmp", "video/mp4"]
 MAX_PHOTO_BYTES = 25 * 1024 * 1024  # 25 MB
 
@@ -22,6 +21,7 @@ class DenunciaResponseDTO(BaseModel):
     ticket_id: str
     estado: str
     confianza_verificacion_ia: float
+    reintento_idempotente: bool = False
     mensaje: str
 
 class DenunciaConFotoResponseDTO(BaseModel):
@@ -34,6 +34,7 @@ class DenunciaConFotoResponseDTO(BaseModel):
     instrucciones_seguridad: str
     detecciones_vision: list = []
     motor_vision: str = "YOLOv8 Deep Learning"
+    reintento_idempotente: bool = False
     mensaje: str
 
 class EstadoIncidenteCiudadanoDTO(BaseModel):
@@ -61,12 +62,14 @@ async def registrar_denuncia(
             latitud=payload.latitud,
             longitud=payload.longitud,
             telefono=payload.telefono_contacto,
-            imagen_url=payload.imagen_url
+            imagen_url=payload.imagen_url,
+            idempotency_key=idempotency_key
         )
         return DenunciaResponseDTO(
             ticket_id=resultado["ticket_id"],
             estado=resultado["estado"],
             confianza_verificacion_ia=resultado["confianza_verificacion_ia"],
+            reintento_idempotente=resultado.get("reintento_idempotente", False),
             mensaje=resultado["mensaje"]
         )
     except DominioCiudadanoException as e:
@@ -81,14 +84,16 @@ async def registrar_denuncia_con_foto(
     latitud: float = Form(..., ge=-90.0, le=90.0, description="Latitud GPS"),
     longitud: float = Form(..., ge=-180.0, le=180.0, description="Longitud GPS"),
     telefono_contacto: Optional[str] = Form(None, description="Numero de telefono del denunciante"),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     service: DenunciasApplicationService = Depends(get_denuncias_service)
 ):
     """
     Endpoint principal para la recepcion de denuncias con evidencia fotografica.
+    - Soporta cabecera Idempotency-Key para evitar duplicados si la red reintenta.
     - Sube la imagen a AWS S3 (o fallback local 'storage/evidencias/').
     - Valida mediante Deep Learning (YOLOv8 y ratio termico) en MS-05.
     - Clasifica la urgencia mediante NLP supervisado en MS-05.
-    - Guarda en MongoDB y notifica a MS-01 Sala de Crisis en caso de alta prioridad.
+    - Guarda en MongoDB y notifica a MS-01 Sala de Crisis y al WhatsApp del ciudadano.
     """
     if foto.content_type not in FORMATOS_PERMITIDOS:
         raise HTTPException(
@@ -111,7 +116,8 @@ async def registrar_denuncia_con_foto(
             descripcion=descripcion,
             latitud=latitud,
             longitud=longitud,
-            telefono=telefono_contacto
+            telefono=telefono_contacto,
+            idempotency_key=idempotency_key
         )
 
         return DenunciaConFotoResponseDTO(
@@ -124,6 +130,7 @@ async def registrar_denuncia_con_foto(
             instrucciones_seguridad=resultado["instrucciones_seguridad"],
             detecciones_vision=resultado.get("detecciones_vision", []),
             motor_vision=resultado.get("motor_vision", "YOLOv8 Deep Learning"),
+            reintento_idempotente=resultado.get("reintento_idempotente", False),
             mensaje=resultado["mensaje"]
         )
     except DominioCiudadanoException as e:

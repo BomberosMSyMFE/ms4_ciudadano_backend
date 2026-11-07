@@ -15,6 +15,7 @@ class DenunciaCiudadana:
         categoria_nlp: str = "PENDIENTE_TRIAJE",
         estado: str = "RECIBIDO_EN_TRIAJE",
         instrucciones_seguridad: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
         fecha_creacion: Optional[datetime] = None
     ):
         self._validar(descripcion, latitud, longitud)
@@ -27,6 +28,7 @@ class DenunciaCiudadana:
         self.score_fuego_ia = float(score_fuego_ia)
         self.categoria_nlp = categoria_nlp
         self.estado = estado
+        self.idempotency_key = idempotency_key
         self.fecha_creacion = fecha_creacion or datetime.now(timezone.utc)
         self.instrucciones_seguridad = instrucciones_seguridad or self._instrucciones_base()
 
@@ -68,6 +70,7 @@ class DenunciaCiudadana:
             "score_fuego_ia": self.score_fuego_ia,
             "categoria_nlp": self.categoria_nlp,
             "estado": self.estado,
+            "idempotency_key": self.idempotency_key,
             "instrucciones_seguridad": self.instrucciones_seguridad,
             "es_prioridad_alta": self.es_prioridad_alta(),
             "fecha_creacion": self.fecha_creacion.isoformat()

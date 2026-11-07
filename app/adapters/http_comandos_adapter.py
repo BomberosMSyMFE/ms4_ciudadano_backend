@@ -6,13 +6,20 @@ from app.domain.models import DenunciaCiudadana
 
 class HttpComandosAdapter(INotificationPort):
     """
-    Adaptador de integracion de notificaciones hacia MS-01 Comandos & Sala de Crisis.
-    Cuando un ciudadano reporta una emergencia clasificada como ALTA PRIORIDAD,
-    este adaptador emite un evento/POST al centro de comando de bomberos.
+    Adaptador de integracion de notificaciones hacia:
+    1. MS-01 Comandos & Sala de Crisis (Despacho inmediato de unidades)
+    2. n8n / WhatsApp Gateway (Confirmacion y seguimiento directo al telefono del ciudadano)
     """
 
-    def __init__(self, comandos_base_url: Optional[str] = None):
+    def __init__(
+        self,
+        comandos_base_url: Optional[str] = None,
+        n8n_webhook_url: Optional[str] = None,
+        whatsapp_gateway_url: Optional[str] = None
+    ):
         self.base_url = (comandos_base_url or os.getenv("COMANDOS_MS1_URL", "http://127.0.0.1:3000")).rstrip("/")
+        self.n8n_url = (n8n_webhook_url or os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/alerta-ciudadana")).rstrip("/")
+        self.wa_gateway_url = (whatsapp_gateway_url or os.getenv("WHATSAPP_GATEWAY_URL", "http://localhost:8088/send")).rstrip("/")
 
     def _mapear_tipo_incidente(self, categoria_nlp: str) -> str:
         cat = categoria_nlp.upper()
@@ -32,7 +39,11 @@ class HttpComandosAdapter(INotificationPort):
         prioridad = "CRITICA" if denuncia.es_prioridad_alta() else "NORMAL"
         print(f"[EVENTO SALA CRISIS] Denuncia: {denuncia.ticket_id} | Prioridad: {prioridad} | Cat: {denuncia.categoria_nlp}")
 
-        # Solo despachamos activamente a Sala de Crisis si la alerta es de alta prioridad
+        # 1. Enviar notificación al WhatsApp del Ciudadano (vía n8n o gateway)
+        if denuncia.telefono:
+            await self._notificar_whatsapp_ciudadano(denuncia)
+
+        # 2. Despachar a Sala de Crisis (MS-01) si es de alta prioridad
         if not denuncia.es_prioridad_alta():
             return True
 
@@ -63,3 +74,48 @@ class HttpComandosAdapter(INotificationPort):
             print(f"[COMANDOS MS-01] Comandos offline o inaccesible temporalmente ({e}). Alerta preservada en base de datos.")
 
         return True
+
+    async def _notificar_whatsapp_ciudadano(self, denuncia: DenunciaCiudadana):
+        """
+        Emite la notificacion automatica de confirmacion al WhatsApp del ciudadano
+        con su numero de ticket, verificacion de IA e instrucciones de proteccion.
+        """
+        mensaje_texto = (
+            f"🚒 [CUERPO DE BOMBEROS SANTA CRUZ]\n\n"
+            f"Estimado ciudadano, su reporte de emergencia ha sido recibido y verificado por IA.\n\n"
+            f"📋 Ticket Radial: #{denuncia.ticket_id}\n"
+            f"🚦 Estado: {denuncia.estado}\n"
+            f"🔍 Verificación IA: {denuncia.score_fuego_ia * 100:.0f}% de certeza visual\n"
+            f"📍 Categoría: {denuncia.categoria_nlp}\n\n"
+            f"📢 Instrucciones de seguridad:\n{denuncia.instrucciones_seguridad}\n\n"
+            f"Unidades de respuesta han sido informadas. Por favor mantenga la calma y el teléfono despejado."
+        )
+
+        payload = {
+            "to": denuncia.telefono,
+            "phone": denuncia.telefono,
+            "ticket_id": denuncia.ticket_id,
+            "mensaje": mensaje_texto,
+            "message": mensaje_texto,
+            "estado": denuncia.estado,
+            "prioridad_alta": denuncia.es_prioridad_alta()
+        }
+
+        # Intentar envio por gateway o webhook de n8n sin bloquear
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                # Intento 1: n8n webhook
+                try:
+                    await client.post(self.n8n_url, json=payload)
+                    print(f"[WHATSAPP N8N] Notificacion enviada a webhook n8n para {denuncia.telefono}")
+                except Exception:
+                    pass
+
+                # Intento 2: gateway local Baileys
+                try:
+                    await client.post(self.wa_gateway_url, json={"to": denuncia.telefono, "message": mensaje_texto})
+                    print(f"[WHATSAPP GATEWAY] Notificacion entregada al gateway de WhatsApp para {denuncia.telefono}")
+                except Exception:
+                    pass
+        except Exception:
+            pass

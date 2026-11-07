@@ -17,6 +17,14 @@ class InMemoryDenunciaAdapter(IDenunciaStoragePort):
     async def obtener_por_ticket(self, ticket_id: str) -> Optional[DenunciaCiudadana]:
         return self._storage.get(ticket_id)
 
+    async def obtener_por_idempotency_key(self, idempotency_key: str) -> Optional[DenunciaCiudadana]:
+        if not idempotency_key:
+            return None
+        for d in self._storage.values():
+            if d.idempotency_key == idempotency_key:
+                return d
+        return None
+
     async def listar_recientes(self, limite: int = 20) -> List[DenunciaCiudadana]:
         todos = list(self._storage.values())
         todos.sort(key=lambda x: x.fecha_creacion, reverse=True)
