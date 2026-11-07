@@ -48,6 +48,9 @@ class EstadoIncidenteCiudadanoDTO(BaseModel):
     imagen_url: Optional[str] = None
     es_prioridad_alta: Optional[bool] = None
 
+class ActualizarEstadoDTO(BaseModel):
+    nuevo_estado: str = Field(..., description="Nuevo estado: RECIBIDO_EN_TRIAJE, UNIDAD_EN_CAMINO, EN_ESCENA, CONTROLADO")
+
 class N8nWebhookDTO(BaseModel):
     telefono: Optional[str] = None
     texto: Optional[str] = None
@@ -162,6 +165,37 @@ async def consultar_estado_denuncia(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.patch("/denuncias/{ticketId}/estado")
+async def actualizar_estado_denuncia(
+    ticketId: str,
+    payload: ActualizarEstadoDTO,
+    service: DenunciasApplicationService = Depends(get_denuncias_service)
+):
+    """
+    Actualiza el estado operativo de una denuncia en la linea de tiempo.
+    Permite avanzar entre:
+    - RECIBIDO_EN_TRIAJE
+    - UNIDAD_EN_CAMINO
+    - EN_ESCENA
+    - CONTROLADO
+    """
+    denuncia = await service.storage.obtener_por_ticket(ticketId)
+    if not denuncia:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontro el ticket '{ticketId}'"
+        )
+
+    estado_limpio = payload.nuevo_estado.strip().upper()
+    denuncia.estado = estado_limpio
+    await service.storage.guardar_denuncia(denuncia)
+
+    return {
+        "ticket_id": ticketId,
+        "nuevo_estado": denuncia.estado,
+        "mensaje": f"Estado actualizado exitosamente a {denuncia.estado}"
+    }
 
 @router.post("/webhook/n8n-whatsapp", status_code=status.HTTP_200_OK)
 async def webhook_n8n_whatsapp(

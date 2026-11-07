@@ -1,6 +1,7 @@
 import os
 import uuid
 import re
+import asyncio
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
@@ -15,10 +16,12 @@ else:
 
 try:
     import boto3
+    from botocore.config import Config
     from botocore.exceptions import BotoCoreError, ClientError
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
+    Config = None
     BotoCoreError = Exception
     ClientError = Exception
 
@@ -59,11 +62,19 @@ class S3StorageAdapter(IEvidenceStoragePort):
 
         if BOTO3_AVAILABLE and self.aws_access_key and self.aws_secret_key and self.bucket_name:
             try:
+                # Configuración de timeout estricto de 2.5s para no bloquear las solicitudes móviles
+                s3_config = Config(
+                    connect_timeout=2.0,
+                    read_timeout=2.5,
+                    retries={'max_attempts': 1}
+                ) if Config else None
+
                 self._s3_client = boto3.client(
                     "s3",
                     aws_access_key_id=self.aws_access_key,
                     aws_secret_access_key=self.aws_secret_key,
-                    region_name=self.aws_region
+                    region_name=self.aws_region,
+                    config=s3_config
                 )
                 self._s3_configured = True
             except Exception as e:
@@ -83,23 +94,28 @@ class S3StorageAdapter(IEvidenceStoragePort):
         nombre_limpio = re.sub(r"[^a-zA-Z0-9_.-]", "_", nombre_archivo)
         safe_name = f"{uuid.uuid4().hex[:8]}_{nombre_limpio}"
 
-        # 1. Intentar subida a AWS S3 si esta configurado
+        # 1. Intentar subida a AWS S3 de forma asíncrona sin bloquear el event loop (máximo 3.0s)
         if self.is_s3_active:
             try:
                 s3_key = f"evidencias/{safe_name}"
-                self._s3_client.put_object(
-                    Bucket=self.bucket_name,
-                    Key=s3_key,
-                    Body=archivo_bytes,
-                    ContentType=content_type
-                )
+
+                def _sync_put():
+                    self._s3_client.put_object(
+                        Bucket=self.bucket_name,
+                        Key=s3_key,
+                        Body=archivo_bytes,
+                        ContentType=content_type
+                    )
+
+                await asyncio.wait_for(asyncio.to_thread(_sync_put), timeout=3.0)
+
                 if self.public_base_url:
                     return f"{self.public_base_url}/{s3_key}"
                 return f"https://{self.bucket_name}.s3.{self.aws_region}.amazonaws.com/{s3_key}"
-            except (BotoCoreError, ClientError, Exception) as s3_err:
-                print(f"[ALMACENAMIENTO S3] Fallo subida a AWS S3 ({s3_err}). Activando fallback local.")
+            except (BotoCoreError, ClientError, asyncio.TimeoutError, Exception) as s3_err:
+                print(f"[ALMACENAMIENTO S3] Fallo subida a AWS S3 ({s3_err}). Activando fallback local inmediato.")
 
-        # 2. Fallback de Almacenamiento Local
+        # 2. Fallback de Almacenamiento Local Inmediato
         ruta_archivo = self.storage_dir / safe_name
         with open(ruta_archivo, "wb") as f:
             f.write(archivo_bytes)
