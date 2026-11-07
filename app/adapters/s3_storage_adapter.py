@@ -3,7 +3,15 @@ import uuid
 import re
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 from app.ports.evidence_storage_port import IEvidenceStoragePort
+
+# Carga automatica de .env buscando en el microservicio o raiz
+_env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+if _env_file.exists():
+    load_dotenv(dotenv_path=_env_file)
+else:
+    load_dotenv()
 
 try:
     import boto3
@@ -35,10 +43,10 @@ class S3StorageAdapter(IEvidenceStoragePort):
         local_base_url: Optional[str] = None,
         storage_dir: Optional[str] = None
     ):
-        self.aws_access_key = aws_access_key or os.getenv("AWS_ACCESS_KEY_ID", "").strip()
-        self.aws_secret_key = aws_secret_key or os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
-        self.aws_region = aws_region or os.getenv("AWS_REGION", "us-east-1").strip()
-        self.bucket_name = bucket_name or os.getenv("AWS_S3_BUCKET_NAME", "bomberos-scz-evidencias").strip()
+        self.aws_access_key = aws_access_key if aws_access_key is not None else os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+        self.aws_secret_key = aws_secret_key if aws_secret_key is not None else os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+        self.aws_region = aws_region if aws_region is not None else os.getenv("AWS_REGION", "us-east-1").strip()
+        self.bucket_name = bucket_name if bucket_name is not None else os.getenv("AWS_S3_BUCKET_NAME", "bomberos-scz-evidencias").strip()
         self.public_base_url = os.getenv("AWS_S3_PUBLIC_BASE_URL", "").strip()
         self.local_base_url = (local_base_url or os.getenv("LOCAL_STORAGE_BASE_URL", "http://localhost:8083")).rstrip("/")
         
