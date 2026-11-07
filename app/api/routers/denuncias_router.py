@@ -7,7 +7,11 @@ from app.api.dependencies import get_denuncias_service
 
 router = APIRouter(prefix="/api/v1", tags=["Portal Ciudadano y Denuncias"])
 
-FORMATOS_PERMITIDOS = ["image/jpeg", "image/png", "image/webp", "image/bmp", "video/mp4"]
+FORMATOS_PERMITIDOS = [
+    "image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff",
+    "video/mp4", "video/quicktime", "video/webm", "video/3gpp", "video/x-matroska",
+    "audio/mpeg", "audio/wav", "audio/mp4", "audio/aac", "audio/ogg", "audio/webm"
+]
 MAX_PHOTO_BYTES = 25 * 1024 * 1024  # 25 MB
 
 class DenunciaInputDTO(BaseModel):
