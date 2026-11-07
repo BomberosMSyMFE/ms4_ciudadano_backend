@@ -1,8 +1,14 @@
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.api.routers import denuncias_router
 from app.api.dependencies import get_storage
+
+storage_dir = Path("storage/evidencias")
+storage_dir.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,7 +22,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MS-04 Portal Ciudadano y Denuncias de Emergencia",
     version="1.0.0",
-    description="API REST para recepcion de denuncias ciudadanas y webhooks de n8n.",
+    description="API REST para recepcion de denuncias ciudadanas, evidencia fotografica (AWS S3) y webhooks de n8n.",
     lifespan=lifespan
 )
 
@@ -28,6 +34,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Montar directorio estatico para servir evidencias locales en modo fallback
+app.mount("/evidencias", StaticFiles(directory=str(storage_dir)), name="evidencias")
+
 @app.get("/", tags=["Info"])
 async def root():
     return {
@@ -37,7 +46,8 @@ async def root():
         "documentacion_swagger": "/docs",
         "health": "/health",
         "endpoints": {
-            "registrar_denuncia": "POST /api/v1/denuncias",
+            "registrar_denuncia_json": "POST /api/v1/denuncias",
+            "registrar_denuncia_con_foto": "POST /api/v1/denuncias/con-foto",
             "consultar_ticket": "GET /api/v1/denuncias/{ticketId}",
             "webhook_whatsapp_n8n": "POST /api/v1/webhook/n8n-whatsapp",
             "listar_denuncias": "GET /api/v1/denuncias"
