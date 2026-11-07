@@ -20,7 +20,7 @@ def get_ia_validator() -> IIAValidatorPort:
     return HttpIAAdapter(base_url=ia_url)
 
 def get_notifier() -> INotificationPort:
-    comandos_url = os.getenv("COMANDOS_MS1_URL", "http://127.0.0.1:3000")
+    comandos_url = os.getenv("COMANDOS_MS1_URL", "http://52.7.165.245:3000")
     return HttpComandosAdapter(comandos_base_url=comandos_url)
 
 def get_evidence_storage() -> IEvidenceStoragePort:
