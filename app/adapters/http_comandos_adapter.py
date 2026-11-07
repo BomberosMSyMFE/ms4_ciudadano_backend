@@ -19,7 +19,7 @@ class HttpComandosAdapter(INotificationPort):
     ):
         self.base_url = (comandos_base_url or os.getenv("COMANDOS_MS1_URL", "http://127.0.0.1:3000")).rstrip("/")
         self.n8n_url = (n8n_webhook_url or os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/alerta-ciudadana")).rstrip("/")
-        self.wa_gateway_url = (whatsapp_gateway_url or os.getenv("WHATSAPP_GATEWAY_URL", "http://localhost:8088/send")).rstrip("/")
+        self.wa_gateway_url = (whatsapp_gateway_url or os.getenv("WHATSAPP_GATEWAY_URL", "http://localhost:8088/enviar")).rstrip("/")
 
     def _mapear_tipo_incidente(self, categoria_nlp: str) -> str:
         cat = categoria_nlp.upper()
@@ -111,9 +111,18 @@ class HttpComandosAdapter(INotificationPort):
                 except Exception:
                     pass
 
-                # Intento 2: gateway local Baileys
+                # Intento 2: gateway local Baileys (puerto 8088 /enviar)
                 try:
-                    await client.post(self.wa_gateway_url, json={"to": denuncia.telefono, "message": mensaje_texto})
+                    await client.post(
+                        self.wa_gateway_url,
+                        json={
+                            "numero": denuncia.telefono,
+                            "numeros": [denuncia.telefono],
+                            "to": denuncia.telefono,
+                            "mensaje": mensaje_texto,
+                            "message": mensaje_texto
+                        }
+                    )
                     print(f"[WHATSAPP GATEWAY] Notificacion entregada al gateway de WhatsApp para {denuncia.telefono}")
                 except Exception:
                     pass
