@@ -1,0 +1,132 @@
+{
+  "name": "Pipeline_Bomberos_WhatsApp_Triaje_Jael",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "denuncia-whatsapp",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "node-webhook-01",
+      "name": "Webhook_WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ Boolean($json.body.imagen_url) }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-router-02",
+      "name": "Tiene_Evidencia_Visual",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8005/api/v1/vision/validar-evidencia-url",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"imagen_url\": \"{{ $json.body.imagen_url }}\"\n}"
+      },
+      "id": "node-ia-vision-03a",
+      "name": "Validar_Vision_YOLOv8",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [660, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8005/api/v1/nlp/clasificar-urgencia",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"texto\": \"{{ $json.body.texto || 'Alerta ciudadana' }}\"\n}"
+      },
+      "id": "node-ia-nlp-03b",
+      "name": "Clasificar_NLP_Urgencia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [660, 420]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8083/api/v1/denuncias",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "=N8N-{{ $node[\"Webhook_WhatsApp\"].json.body.telefono }}-{{ $now.toMillis() }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"descripcion\": \"{{ $node[\"Webhook_WhatsApp\"].json.body.texto || 'Reporte recibido vía WhatsApp' }}\",\n  \"latitud\": {{ $node[\"Webhook_WhatsApp\"].json.body.latitud || -17.7833 }},\n  \"longitud\": {{ $node[\"Webhook_WhatsApp\"].json.body.longitud || -63.1821 }},\n  \"telefono_contacto\": \"{{ $node[\"Webhook_WhatsApp\"].json.body.telefono }}\",\n  \"imagen_url\": \"{{ $node[\"Webhook_WhatsApp\"].json.body.imagen_url || '' }}\"\n}"
+      },
+      "id": "node-persist-ms04",
+      "name": "Registrar_En_MS04",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "respuesta_whatsapp",
+              "value": "=Central de Bomberos: Su reporte ha sido registrado exitosamente con el ticket #{{ $json.ticket_id }}. Estado: {{ $json.estado }}. Mantenga la calma y siga las instrucciones de seguridad emitidas."
+            },
+            {
+              "name": "ticket_id",
+              "value": "={{ $json.ticket_id }}"
+            },
+            {
+              "name": "estado_operativo",
+              "value": "={{ $json.estado }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-resp-final",
+      "name": "Formatear_Respuesta_WhatsApp",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1160, 300]
+    }
+  ],
+  "connections": {
+    "Webhook_WhatsApp": {
+      "main": [[{ "node": "Tiene_Evidencia_Visual", "type": "main", "index": 0 }]]
+    },
+    "Tiene_Evidencia_Visual": {
+      "main": [
+        [{ "node": "Validar_Vision_YOLOv8", "type": "main", "index": 0 }],
+        [{ "node": "Clasificar_NLP_Urgencia", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validar_Vision_YOLOv8": {
+      "main": [[{ "node": "Registrar_En_MS04", "type": "main", "index": 0 }]]
+    },
+    "Clasificar_NLP_Urgencia": {
+      "main": [[{ "node": "Registrar_En_MS04", "type": "main", "index": 0 }]]
+    },
+    "Registrar_En_MS04": {
+      "main": [[{ "node": "Formatear_Respuesta_WhatsApp", "type": "main", "index": 0 }]]
+    }
+  }
+}

@@ -51,3 +51,7 @@ htmlcov/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Storage Local Fallback
+storage/evidencias/*
+!storage/evidencias/.gitkeep

@@ -12,6 +12,15 @@ class MockIAAdapter(IIAValidatorPort):
             return {"verificado_por_ia": True, "nivel_confianza": 0.95, "detecciones": ["fuego"]}
         return {"verificado_por_ia": False, "nivel_confianza": 0.10, "detecciones": []}
 
+    async def validar_imagen_bytes(self, archivo_bytes, nombre_archivo="evidencia.jpg", content_type="image/jpeg"):
+        return {
+            "verificado_automaticamente": True,
+            "nivel_confianza": 0.95,
+            "total_detecciones": 1,
+            "detalles": [{"clase": "fire", "confianza": 0.95}],
+            "motor": "YOLOv8 Deep Learning"
+        }
+
     async def clasificar_urgencia_texto(self, texto):
         if "tinglado" in texto or "humo" in texto:
             return {"categoria_predicha": "CRITICO_ESTRUCTURAL", "confianza": 0.92}

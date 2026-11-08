@@ -22,6 +22,7 @@ class MotorMongoAdapter(IDenunciaStoragePort):
             "score_fuego_ia": denuncia.score_fuego_ia,
             "categoria_nlp": denuncia.categoria_nlp,
             "estado": denuncia.estado,
+            "idempotency_key": denuncia.idempotency_key,
             "instrucciones_seguridad": denuncia.instrucciones_seguridad,
             "es_prioridad_alta": denuncia.es_prioridad_alta(),
             "fecha_creacion": denuncia.fecha_creacion
@@ -31,6 +32,14 @@ class MotorMongoAdapter(IDenunciaStoragePort):
 
     async def obtener_por_ticket(self, ticket_id: str) -> Optional[DenunciaCiudadana]:
         doc = await self.collection.find_one({"_id": ticket_id})
+        if not doc:
+            return None
+        return self._documento_a_entidad(doc)
+
+    async def obtener_por_idempotency_key(self, idempotency_key: str) -> Optional[DenunciaCiudadana]:
+        if not idempotency_key:
+            return None
+        doc = await self.collection.find_one({"idempotency_key": idempotency_key})
         if not doc:
             return None
         return self._documento_a_entidad(doc)
@@ -58,6 +67,7 @@ class MotorMongoAdapter(IDenunciaStoragePort):
             score_fuego_ia=float(doc.get("score_fuego_ia", 0.0)),
             categoria_nlp=doc.get("categoria_nlp", "PENDIENTE_TRIAJE"),
             estado=doc.get("estado", "RECIBIDO_EN_TRIAJE"),
+            idempotency_key=doc.get("idempotency_key"),
             instrucciones_seguridad=doc.get("instrucciones_seguridad"),
             fecha_creacion=fecha
         )

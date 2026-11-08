@@ -3,9 +3,11 @@ from fastapi import Depends
 from app.ports.storage_port import IDenunciaStoragePort
 from app.ports.ia_validator_port import IIAValidatorPort
 from app.ports.notification_port import INotificationPort
+from app.ports.evidence_storage_port import IEvidenceStoragePort
 from app.adapters.mongo_adapter import MotorMongoAdapter
 from app.adapters.http_ia_adapter import HttpIAAdapter
-from app.adapters.console_notification_adapter import ConsoleNotificationAdapter
+from app.adapters.http_comandos_adapter import HttpComandosAdapter
+from app.adapters.s3_storage_adapter import S3StorageAdapter
 from app.services.denuncias_service import DenunciasApplicationService
 
 def get_storage() -> IDenunciaStoragePort:
@@ -18,15 +20,21 @@ def get_ia_validator() -> IIAValidatorPort:
     return HttpIAAdapter(base_url=ia_url)
 
 def get_notifier() -> INotificationPort:
-    return ConsoleNotificationAdapter()
+    comandos_url = os.getenv("COMANDOS_MS1_URL", "http://52.7.165.245:3000")
+    return HttpComandosAdapter(comandos_base_url=comandos_url)
+
+def get_evidence_storage() -> IEvidenceStoragePort:
+    return S3StorageAdapter()
 
 def get_denuncias_service(
     storage: IDenunciaStoragePort = Depends(get_storage),
     ia_validator: IIAValidatorPort = Depends(get_ia_validator),
-    notifier: INotificationPort = Depends(get_notifier)
+    notifier: INotificationPort = Depends(get_notifier),
+    evidence_storage: IEvidenceStoragePort = Depends(get_evidence_storage)
 ) -> DenunciasApplicationService:
     return DenunciasApplicationService(
         storage=storage,
         ia_validator=ia_validator,
-        notifier=notifier
+        notifier=notifier,
+        evidence_storage=evidence_storage
     )

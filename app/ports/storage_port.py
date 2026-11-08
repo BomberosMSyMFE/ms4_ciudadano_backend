@@ -12,5 +12,10 @@ class IDenunciaStoragePort(ABC):
         pass
 
     @abstractmethod
+    async def obtener_por_idempotency_key(self, idempotency_key: str) -> Optional[DenunciaCiudadana]:
+        """Recupera un reporte previo asociado a la clave de idempotencia del cliente para evitar duplicados."""
+        pass
+
+    @abstractmethod
     async def listar_recientes(self, limite: int = 20) -> List[DenunciaCiudadana]:
         pass
