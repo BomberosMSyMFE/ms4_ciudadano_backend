@@ -9,7 +9,7 @@ class HttpComandosAdapter(INotificationPort):
     """
     Adaptador de integracion de notificaciones hacia:
     1. MS-01 Comandos & Sala de Crisis (Despacho inmediato de unidades con autenticación SSO JWT)
-    2. n8n / WhatsApp Gateway (Confirmación y seguimiento directo al teléfono del ciudadano)
+    2. n8n / WhatsApp Gateway (Notificación al ciudadano ÚNICAMENTE cuando Comandos valida y despacha unidades)
     """
 
     def __init__(
@@ -63,15 +63,16 @@ class HttpComandosAdapter(INotificationPort):
         return None
 
     async def notificar_nueva_alerta(self, denuncia: DenunciaCiudadana) -> bool:
+        """
+        Envía el reporte verificado a MS-01 Sala de Crisis para que el operador lo valide.
+        NOTA: Por regla de negocio, el WhatsApp al ciudadano NO se envía aquí;
+        se envía cuando el operador en Comandos valida la alarma y despacha unidades.
+        """
         prioridad = "CRITICA" if denuncia.es_prioridad_alta() else "NORMAL"
-        print(f"[EVENTO SALA CRISIS] Denuncia: {denuncia.ticket_id} | Prioridad: {prioridad} | Cat: {denuncia.categoria_nlp}")
+        print(f"[EVENTO SALA CRISIS] Denuncia recibida: {denuncia.ticket_id} | Prioridad: {prioridad} | Cat: {denuncia.categoria_nlp} | Verificado IA: {denuncia.score_fuego_ia}")
 
-        # 1. Enviar notificación al WhatsApp del Ciudadano (vía n8n y gateway Baileys)
-        if denuncia.telefono:
-            await self._notificar_whatsapp_ciudadano(denuncia)
-
-        # 2. Despachar a Sala de Crisis (MS-01) si es de alta prioridad
         if not denuncia.es_prioridad_alta():
+            print(f"[COMANDOS MS-01] Ticket {denuncia.ticket_id} no califica como prioridad alta inmediata. En espera de revisión manual.")
             return True
 
         tipo_incidente = self._mapear_tipo_incidente(denuncia.categoria_nlp)
@@ -99,10 +100,9 @@ class HttpComandosAdapter(INotificationPort):
                 if res.status_code in [200, 201]:
                     data = res.json()
                     cod = data.get("codigoRadial", "OK")
-                    print(f"[COMANDOS MS-01] Emergencia vinculada en Sala de Crisis: {cod} para ticket {denuncia.ticket_id}")
+                    print(f"[COMANDOS MS-01] Emergencia vinculada en Sala de Crisis: {cod} para ticket {denuncia.ticket_id}. En espera de despacho de unidades.")
                     return True
                 elif res.status_code == 401:
-                    # Renovar token e intentar 1 vez más
                     self._cached_jwt_token = None
                     new_token = await self._obtener_token_comandos()
                     if new_token:
@@ -113,68 +113,67 @@ class HttpComandosAdapter(INotificationPort):
                         )
                         if res2.status_code in [200, 201]:
                             return True
-                print(f"[COMANDOS MS-01] Despacho enviado con respuesta HTTP {res.status_code}")
+                print(f"[COMANDOS MS-01] Alerta enviada con respuesta HTTP {res.status_code}")
         except Exception as e:
             print(f"[COMANDOS MS-01] Comandos offline o inaccesible temporalmente ({e}). Alerta preservada en base de datos.")
 
         return True
 
-    async def _notificar_whatsapp_ciudadano(self, denuncia: DenunciaCiudadana):
+    async def notificar_despacho_whatsapp(
+        self,
+        telefono: str,
+        ticket_id: str,
+        codigo_radial: str,
+        estado: str = "DESPACHADO",
+        unidades: int = 1
+    ):
         """
-        Emite la notificación automática de confirmación al WhatsApp del ciudadano
-        con su número de ticket, verificación de IA e instrucciones de protección.
+        Emite la notificación oficial al WhatsApp del ciudadano SOLO cuando Comandos
+        ha asignado unidades y el vehículo de bomberos va en camino.
         """
-        # Normalizar número de teléfono (ej. 78945612 -> 59178945612)
-        raw_digits = re.sub(r"\D", "", denuncia.telefono or "")
+        raw_digits = re.sub(r"\D", "", telefono or "")
         if len(raw_digits) == 8:
             phone_num = f"591{raw_digits}"
         else:
-            phone_num = raw_digits if raw_digits else (denuncia.telefono or "")
+            phone_num = raw_digits if raw_digits else (telefono or "")
 
         mensaje_texto = (
             f"🚒 *[CUERPO DE BOMBEROS SANTA CRUZ]*\n\n"
-            f"Estimado ciudadano, su reporte de emergencia ha sido recibido y verificado por IA.\n\n"
-            f"📋 *Ticket Radial:* `#{denuncia.ticket_id}`\n"
-            f"🚦 *Estado:* {denuncia.estado}\n"
-            f"🔍 *Verificación IA:* {denuncia.score_fuego_ia * 100:.0f}% de certeza visual (YOLOv8)\n"
-            f"📍 *Categoría:* {denuncia.categoria_nlp}\n\n"
-            f"📢 *Instrucciones de seguridad:*\n{denuncia.instrucciones_seguridad}\n\n"
-            f"🚒 *Las unidades han sido informadas y la ayuda está en camino.* Mantenga la calma y el teléfono despejado."
+            f"🚨 *¡LA AYUDA ESTÁ EN CAMINO!*\n\n"
+            f"Central de Crisis ha validado tu reporte radial *#{ticket_id}* (`{codigo_radial}`).\n"
+            f"Se ha confirmado el despacho de *{unidades} unidad(es)* de bomberos hacia tu ubicación.\n\n"
+            f"🚦 *Estado:* {estado}\n"
+            f"📢 *Recomendaciones:* Por favor mantén el acceso despejado para los camiones cisterna y permanece a resguardo en una zona segura.\n\n"
+            f"Para cualquier novedad urgente, comunícate a la línea gratuita 119."
         )
 
         payload = {
             "to": phone_num,
             "phone": phone_num,
             "numero": phone_num,
-            "ticket_id": denuncia.ticket_id,
+            "ticket_id": ticket_id,
+            "codigo_radial": codigo_radial,
             "mensaje": mensaje_texto,
             "message": mensaje_texto,
-            "estado": denuncia.estado,
-            "prioridad_alta": denuncia.es_prioridad_alta()
+            "estado": estado,
+            "unidades": unidades
         }
 
-        # Intentar envio por gateway Baileys y n8n sin bloquear
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                # 1. Enviar al Gateway local de WhatsApp Baileys (puerto 8088 /enviar)
+            async with httpx.AsyncClient(timeout=4.0) as client:
                 try:
                     res_gw = await client.post(
                         self.wa_gateway_url,
-                        json={
-                            "numero": phone_num,
-                            "numeros": [phone_num],
-                            "mensaje": mensaje_texto
-                        }
+                        json={"numero": phone_num, "mensaje": mensaje_texto}
                     )
                     if res_gw.status_code == 200:
-                        print(f"[WHATSAPP GATEWAY] Notificación entregada exitosamente al WhatsApp de {phone_num}")
+                        print(f"[WHATSAPP GATEWAY] Notificación oficial de despacho entregada a {phone_num}")
                 except Exception as eg:
-                    print(f"[WHATSAPP GATEWAY] Advertencia al contactar gateway: {eg}")
+                    print(f"[WHATSAPP GATEWAY] Error gateway: {eg}")
 
-                # 2. Enviar a webhook de n8n
                 try:
                     await client.post(self.n8n_url, json=payload)
-                    print(f"[WHATSAPP N8N] Notificación transmitida a webhook n8n para {phone_num}")
+                    print(f"[WHATSAPP N8N] Notificación de despacho transmitida a n8n para {phone_num}")
                 except Exception:
                     pass
         except Exception:
