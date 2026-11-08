@@ -45,7 +45,7 @@ class HttpComandosAdapter(INotificationPort):
             return self._cached_jwt_token
 
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=6.0, verify=False) as client:
                 res = await client.post(
                     f"{self.base_url}/api/v1/auth/login",
                     json={
@@ -64,21 +64,15 @@ class HttpComandosAdapter(INotificationPort):
 
     async def notificar_nueva_alerta(self, denuncia: DenunciaCiudadana) -> bool:
         """
-        Envía el reporte verificado a MS-01 Sala de Crisis para que el operador lo valide.
-        NOTA: Por regla de negocio, el WhatsApp al ciudadano NO se envía aquí;
-        se envía cuando el operador en Comandos valida la alarma y despacha unidades.
+        Envía el reporte verificado a MS-01 Sala de Crisis para que el operador lo valide y despache unidades.
         """
-        prioridad = "CRITICA" if denuncia.es_prioridad_alta() else "NORMAL"
+        prioridad = "CRITICA" if denuncia.es_prioridad_alta() else "MEDIA"
         print(f"[EVENTO SALA CRISIS] Denuncia recibida: {denuncia.ticket_id} | Prioridad: {prioridad} | Cat: {denuncia.categoria_nlp} | Verificado IA: {denuncia.score_fuego_ia}")
-
-        if not denuncia.es_prioridad_alta():
-            print(f"[COMANDOS MS-01] Ticket {denuncia.ticket_id} no califica como prioridad alta inmediata. En espera de revisión manual.")
-            return True
 
         tipo_incidente = self._mapear_tipo_incidente(denuncia.categoria_nlp)
         payload = {
             "tipoIncidente": tipo_incidente,
-            "severidad": "CRITICA",
+            "severidad": prioridad,
             "descripcion": f"[REPORTE CIUDADANO {denuncia.ticket_id}] {denuncia.descripcion}",
             "latitud": denuncia.latitud,
             "longitud": denuncia.longitud,
@@ -91,7 +85,7 @@ class HttpComandosAdapter(INotificationPort):
             token = await self._obtener_token_comandos()
             headers = {"Authorization": f"Bearer {token}"} if token else {}
 
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=7.0, verify=False) as client:
                 res = await client.post(
                     f"{self.base_url}/api/v1/incidentes",
                     json=payload,

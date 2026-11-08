@@ -39,7 +39,7 @@ class DenunciaCiudadana:
             raise CoordenadasInvalidasException(latitud, longitud)
 
     def es_prioridad_alta(self) -> bool:
-        return self.score_fuego_ia >= 0.85 or self.categoria_nlp.startswith("CRITICO")
+        return self.score_fuego_ia >= 0.65 or self.categoria_nlp.startswith("CRITICO") or self.categoria_nlp.startswith("ALTO")
 
     def asignar_evaluacion_ia(self, score_fuego: float, categoria: str):
         self.score_fuego_ia = round(float(score_fuego), 3)

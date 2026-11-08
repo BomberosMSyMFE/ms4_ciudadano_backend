@@ -80,18 +80,18 @@ class HttpIAAdapter(IIAValidatorPort):
                 for y in range(0, h, step_y):
                     r, g, b = pixels[x, y]
                     total_sampled += 1
-                    # Regla estricta IEEE Celik & Demirel para llamas reales
-                    if r > 185 and g > 35 and b < 85 and (r > g + 25) and (g > b + 10):
+                    # Regla IEEE estricta para llamas reales (sin falsos positivos en edificios o casas)
+                    if r > 195 and g > 40 and b < 65 and (r > g + 35) and (g > b + 15):
                         fire_px += 1
 
             ratio = fire_px / max(1, total_sampled)
-            if ratio >= 0.02:
-                conf = min(0.96, round(0.72 + ratio * 2.5, 2))
+            if ratio >= 0.035:
+                conf = min(0.92, round(0.70 + ratio * 2.0, 2))
                 return {
                     "verificado_automaticamente": True,
                     "nivel_confianza": conf,
                     "total_detecciones": 1,
-                    "detalles": [{"clase": "fuego_patron_termico", "confianza": conf}],
+                    "detalles": [{"clase": "fuego_activo_termico", "confianza": conf}],
                     "motor": "Analizador Térmico de Respaldo Local (MS-04)"
                 }
         except Exception as err_fallback:
@@ -99,7 +99,7 @@ class HttpIAAdapter(IIAValidatorPort):
 
         return {
             "verificado_automaticamente": False,
-            "nivel_confianza": 0.05,
+            "nivel_confianza": 0.0,
             "total_detecciones": 0,
             "detalles": [],
             "modo": "NO_FUEGO_DETECTADO"

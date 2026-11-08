@@ -1,4 +1,5 @@
 import uuid
+import httpx
 from typing import Optional, Dict, Any
 from app.domain.models import DenunciaCiudadana
 from app.domain.exceptions import TicketNoEncontradoException
@@ -177,6 +178,35 @@ class DenunciasApplicationService:
         denuncia = await self.storage.obtener_por_ticket(ticket_id)
         if not denuncia:
             raise TicketNoEncontradoException(ticket_id)
+
+        # Sincronización en vivo con Comandos MS-01
+        try:
+            if hasattr(self.notifier, '_obtener_token_comandos'):
+                token = await self.notifier._obtener_token_comandos()
+                if token:
+                    async with httpx.AsyncClient(timeout=3.0, verify=False) as client:
+                        res = await client.get(
+                            f"{self.notifier.base_url}/api/v1/incidentes/activos",
+                            headers={"Authorization": f"Bearer {token}"}
+                        )
+                        if res.status_code == 200:
+                            for inc in res.json():
+                                if ticket_id in inc.get("descripcion", ""):
+                                    estado_cmd = inc.get("estado", "")
+                                    nuevo_estado = denuncia.estado
+                                    if estado_cmd == "DESPACHADO":
+                                        nuevo_estado = "UNIDAD_EN_CAMINO"
+                                    elif estado_cmd == "EN_COMBATE":
+                                        nuevo_estado = "EN_ESCENA"
+                                    elif estado_cmd in ["CONTROLADO", "CERRADO", "LIQUIDADO"]:
+                                        nuevo_estado = "CONTROLADO"
+
+                                    if nuevo_estado != denuncia.estado:
+                                        denuncia.estado = nuevo_estado
+                                        await self.storage.guardar_denuncia(denuncia)
+                                    break
+        except Exception:
+            pass
 
         return {
             "ticket_id": denuncia.ticket_id,

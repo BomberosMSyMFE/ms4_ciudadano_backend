@@ -41,7 +41,7 @@ async def _poller_despacho_comandos():
             if not token:
                 continue
 
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=6.0, verify=False) as client:
                 res = await client.get(
                     f"{notifier.base_url}/api/v1/incidentes/activos",
                     headers={"Authorization": f"Bearer {token}"}
@@ -58,16 +58,30 @@ async def _poller_despacho_comandos():
                             estado = inc.get("estado", "")
                             codigo = inc.get("codigoRadial", ticket_id)
 
+                            # Sincronizar estado táctico en la base de datos local
+                            d = await storage.obtener_por_ticket(ticket_id)
+                            if d:
+                                nuevo_estado_ciudadano = d.estado
+                                if estado in ["DESPACHADO"]:
+                                    nuevo_estado_ciudadano = "UNIDAD_EN_CAMINO"
+                                elif estado in ["EN_COMBATE"]:
+                                    nuevo_estado_ciudadano = "EN_ESCENA"
+                                elif estado in ["CONTROLADO", "CERRADO", "LIQUIDADO"]:
+                                    nuevo_estado_ciudadano = "CONTROLADO"
+
+                                if d.estado != nuevo_estado_ciudadano:
+                                    d.estado = nuevo_estado_ciudadano
+                                    await storage.guardar_denuncia(d)
+                                    print(f"[COMANDOS SYNC] Ticket {ticket_id} sincronizado a '{nuevo_estado_ciudadano}' según Sala de Crisis ({estado})", flush=True)
+
                             if (unidades > 0 or estado in ["DESPACHADO", "EN_COMBATE", "CONTROLADO"]) and ticket_id not in notificados:
                                 telefono = None
                                 denunciante = inc.get("denunciante")
                                 if isinstance(denunciante, dict):
                                     telefono = denunciante.get("telefono")
 
-                                if not telefono:
-                                    d = await storage.obtener_por_ticket(ticket_id)
-                                    if d and d.telefono:
-                                        telefono = d.telefono
+                                if not telefono and d and d.telefono:
+                                    telefono = d.telefono
 
                                 if telefono:
                                     print(f"[COMANDOS DESPACHO] Operador validó ticket {ticket_id} ({codigo}) en estado '{estado}' con {unidades} unidad(es). Enviando WhatsApp oficial...", flush=True)
@@ -88,6 +102,7 @@ async def lifespan(app: FastAPI):
     try:
         storage = get_storage()
         await storage.db.command("ping")
+        await storage.collection.create_index("idempotency_key", unique=True, sparse=True)
     except Exception:
         pass
     yield
