@@ -1,0 +1,102 @@
+{
+  "name": "Pipeline_Bomberos_Alerta_Ciudadana_WhatsApp_Jael",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerta-ciudadana",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "node-wh-ciudadano-01",
+      "name": "Webhook_Alerta_Ciudadana",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst telefono = body.phone || body.to || '+59160495035';\nconst mensaje = body.mensaje || body.message || '🚨 Reporte de emergencia recibido';\nconst ticket = body.ticket_id || 'DEN-AUT';\n\nreturn [{\n  json: {\n    evento: 'ALERTA_CIUDADANA_PROCESADA',\n    destinatario: telefono,\n    ticket_id: ticket,\n    mensaje: mensaje,\n    estado: body.estado || 'RECIBIDO',\n    prioridad_alta: body.prioridad_alta || false,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node-format-02",
+      "name": "Formatear_Mensaje_WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://bomberos-uagrm-scz.duckdns.org/api/v1/alarmas/iniciar-triaje",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tipo\": \"ALERTA_CIUDADANA\",\n  \"ticket_id\": \"{{ $json.ticket_id }}\",\n  \"mensaje\": \"{{ $json.mensaje }}\",\n  \"prioridad\": \"{{ $json.prioridad_alta ? 'CRITICA' : 'MEDIA' }}\"\n}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "node-notify-ms01-03",
+      "name": "Notificar_Comandos_MS01",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [700, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://advertisers-allergy-asus-randy.trycloudflare.com/enviar",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ numero: $json.destinatario, mensaje: $json.mensaje }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "node-send-wa-04",
+      "name": "Despachar_WhatsApp_Ciudadano",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [700, 400],
+      "continueOnFail": false
+    }
+  ],
+  "connections": {
+    "Webhook_Alerta_Ciudadana": {
+      "main": [
+        [
+          {
+            "node": "Formatear_Mensaje_WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear_Mensaje_WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Notificar_Comandos_MS01",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Despachar_WhatsApp_Ciudadano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

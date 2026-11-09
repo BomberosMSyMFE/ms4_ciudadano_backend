@@ -18,9 +18,9 @@ class HttpComandosAdapter(INotificationPort):
         n8n_webhook_url: Optional[str] = None,
         whatsapp_gateway_url: Optional[str] = None
     ):
-        self.base_url = (comandos_base_url or os.getenv("COMANDOS_MS1_URL", "http://52.7.165.245:3000")).rstrip("/")
-        self.n8n_url = (n8n_webhook_url or os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/alerta-ciudadana")).rstrip("/")
-        self.wa_gateway_url = (whatsapp_gateway_url or os.getenv("WHATSAPP_GATEWAY_URL", "http://localhost:8088/enviar")).rstrip("/")
+        self.base_url = (comandos_base_url or os.getenv("COMANDOS_MS1_URL", "https://bomberos-uagrm-scz.duckdns.org")).rstrip("/")
+        self.n8n_url = (n8n_webhook_url or os.getenv("N8N_WEBHOOK_URL", "https://jae-ls.app.n8n.cloud/webhook/alerta-ciudadana")).rstrip("/")
+        self.wa_gateway_url = (whatsapp_gateway_url or os.getenv("WHATSAPP_GATEWAY_URL", "https://advertisers-allergy-asus-randy.trycloudflare.com/enviar")).rstrip("/")
         self._cached_jwt_token: Optional[str] = None
 
     def _mapear_tipo_incidente(self, categoria_nlp: str) -> str:

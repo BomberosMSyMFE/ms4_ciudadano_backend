@@ -160,4 +160,5 @@ app.include_router(denuncias_router.router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.api.main:app", host="0.0.0.0", port=8083, reload=True)
+    port = int(os.getenv("PORT", 8083))
+    uvicorn.run("app.api.main:app", host="0.0.0.0", port=port, reload=True)
