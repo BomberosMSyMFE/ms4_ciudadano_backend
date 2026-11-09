@@ -22,11 +22,12 @@ class MotorMongoAdapter(IDenunciaStoragePort):
             "score_fuego_ia": denuncia.score_fuego_ia,
             "categoria_nlp": denuncia.categoria_nlp,
             "estado": denuncia.estado,
-            "idempotency_key": denuncia.idempotency_key,
             "instrucciones_seguridad": denuncia.instrucciones_seguridad,
             "es_prioridad_alta": denuncia.es_prioridad_alta(),
             "fecha_creacion": denuncia.fecha_creacion
         }
+        if denuncia.idempotency_key:
+            doc["idempotency_key"] = denuncia.idempotency_key
         await self.collection.replace_one({"_id": denuncia.ticket_id}, doc, upsert=True)
         return denuncia.ticket_id
 

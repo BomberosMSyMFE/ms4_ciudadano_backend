@@ -102,7 +102,15 @@ async def lifespan(app: FastAPI):
     try:
         storage = get_storage()
         await storage.db.command("ping")
-        await storage.collection.create_index("idempotency_key", unique=True, sparse=True)
+        try:
+            await storage.collection.drop_index("idempotency_key_1")
+        except Exception:
+            pass
+        await storage.collection.create_index(
+            "idempotency_key",
+            unique=True,
+            partialFilterExpression={"idempotency_key": {"$type": "string"}}
+        )
     except Exception:
         pass
     yield
