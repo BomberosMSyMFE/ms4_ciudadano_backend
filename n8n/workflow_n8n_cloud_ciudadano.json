@@ -29,8 +29,27 @@
         "url": "https://bomberos-uagrm-scz.duckdns.org/api/v1/alarmas/iniciar-triaje",
         "method": "POST",
         "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"tipo\": \"ALERTA_CIUDADANA\",\n  \"ticket_id\": \"{{ $json.ticket_id }}\",\n  \"mensaje\": \"{{ $json.mensaje }}\",\n  \"prioridad\": \"{{ $json.prioridad_alta ? 'CRITICA' : 'MEDIA' }}\"\n}",
+        "specifyBody": "fields",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tipo",
+              "value": "ALERTA_CIUDADANA"
+            },
+            {
+              "name": "ticket_id",
+              "value": "={{ $json.ticket_id }}"
+            },
+            {
+              "name": "mensaje",
+              "value": "={{ $json.mensaje }}"
+            },
+            {
+              "name": "prioridad",
+              "value": "={{ $json.prioridad_alta ? 'CRITICA' : 'MEDIA' }}"
+            }
+          ]
+        },
         "options": {
           "timeout": 5000
         }
@@ -56,8 +75,19 @@
           ]
         },
         "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ numero: $json.destinatario, mensaje: $json.mensaje }) }}",
+        "specifyBody": "fields",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "numero",
+              "value": "={{ $json.destinatario }}"
+            },
+            {
+              "name": "mensaje",
+              "value": "={{ $json.mensaje }}"
+            }
+          ]
+        },
         "options": {
           "timeout": 10000
         }
