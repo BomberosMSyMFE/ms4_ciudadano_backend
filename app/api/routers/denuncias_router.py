@@ -191,6 +191,19 @@ async def actualizar_estado_denuncia(
     denuncia.estado = estado_limpio
     await service.storage.guardar_denuncia(denuncia)
 
+    if estado_limpio in ["UNIDAD_EN_CAMINO", "DESPACHADO"]:
+        if denuncia.telefono:
+            try:
+                await service.notifier.notificar_despacho_whatsapp(
+                    telefono=denuncia.telefono,
+                    ticket_id=ticketId,
+                    codigo_radial=ticketId,
+                    estado=estado_limpio,
+                    unidades=1
+                )
+            except Exception as e:
+                print(f"[NOTIFICACION ERROR] {e}")
+
     return {
         "ticket_id": ticketId,
         "nuevo_estado": denuncia.estado,
